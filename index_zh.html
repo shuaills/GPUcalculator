@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPU 经济性计算器 — 开源大模型 API 服务毛利测算</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0: #0a0b0e;
+  --bg-1: #12141a;
+  --bg-2: #1a1d26;
+  --bg-3: #232733;
+  --border: #2a2e3a;
+  --border-light: #363b4a;
+  --text-0: #e8eaf0;
+  --text-1: #b0b4c0;
+  --text-2: #7a7f90;
+  --text-3: #505568;
+  --amber: #f0b429;
+  --amber-dim: #f0b42933;
+  --amber-glow: #f0b42918;
+  --cyan: #22d3ee;
+  --cyan-dim: #22d3ee33;
+  --cyan-glow: #22d3ee12;
+  --green: #34d399;
+  --green-dim: #34d39933;
+  --red: #f87171;
+  --red-dim: #f8717133;
+  --purple: #a78bfa;
+  --purple-dim: #a78bfa33;
+  --orange: #fb923c;
+  --orange-dim: #fb923c33;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html {
+  font-size: 14px;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--text-0);
+  font-family: 'Noto Sans SC', sans-serif;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.app {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 2rem 2.5rem 4rem;
+}
+
+header {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+header h1 {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-0);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+header h1 .dot {
+  width: 8px; height: 8px;
+  background: var(--amber);
+  border-radius: 50%;
+  box-shadow: 0 0 12px var(--amber);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+header p {
+  color: var(--text-2);
+  font-size: 0.85rem;
+  margin-top: 0.4rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 300;
+}
+
+.section {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.25rem;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.section-header:hover { background: var(--bg-3); }
+
+.section-header h2 {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.section-header .tag {
+  font-size: 0.65rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 500;
+}
+
+.tag-input { background: var(--amber-dim); color: var(--amber); }
+.tag-computed { background: var(--cyan-dim); color: var(--cyan); }
+.tag-result { background: var(--green-dim); color: var(--green); }
+
+.section-header .chevron {
+  color: var(--text-3);
+  transition: transform 0.25s;
+  font-size: 1rem;
+}
+
+.section.collapsed .chevron { transform: rotate(-90deg); }
+.section.collapsed .section-body { display: none; }
+
+.section-body { padding: 1.25rem; }
+
+.param-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 0.75rem;
+}
+
+.param-grid-wide {
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+}
+
+.param {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0.85rem;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  gap: 0.5rem;
+  transition: border-color 0.15s;
+}
+
+.param:hover { border-color: var(--border-light); }
+.param:focus-within { border-color: var(--amber); }
+
+.param-label {
+  font-size: 0.8rem;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.param-label .sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--text-2);
+}
+
+.param-right {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.param input[type="number"],
+.param input[type="text"] {
+  background: transparent;
+  border: none;
+  color: var(--amber);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: right;
+  width: 90px;
+  outline: none;
+}
+
+.param input[type="number"]::-webkit-inner-spin-button { opacity: 0.3; }
+
+.param .unit {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--text-3);
+  min-width: 30px;
+  text-align: left;
+}
+
+.param.computed {
+  border-color: var(--cyan-dim);
+  background: linear-gradient(135deg, var(--bg-0), var(--cyan-glow));
+}
+
+.param.computed .val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--cyan);
+}
+
+.param.star .param-label {
+  color: var(--text-0);
+  font-weight: 500;
+}
+
+.param.star .param-label::before {
+  content: '\2605 ';
+  color: var(--amber);
+}
+
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.preset-row label {
+  font-size: 0.8rem;
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.preset-row select {
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  color: var(--amber);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 5px;
+  outline: none;
+  cursor: pointer;
+  min-width: 260px;
+}
+
+.preset-row select:focus { border-color: var(--amber); }
+.preset-row select option { background: var(--bg-1); color: var(--text-0); }
+
+.gpu-chips { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+.gpu-chip {
+  padding: 0.35rem 0.85rem;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--text-1);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.gpu-chip:hover { border-color: var(--text-2); }
+.gpu-chip.active {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: var(--amber-glow);
+}
+
+.dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.dash-card {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.15rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.dash-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+}
+
+.dash-card.amber::before { background: var(--amber); }
+.dash-card.cyan::before { background: var(--cyan); }
+.dash-card.green::before { background: var(--green); }
+.dash-card.red::before { background: var(--red); }
+.dash-card.purple::before { background: var(--purple); }
+.dash-card.orange::before { background: var(--orange); }
+
+.dash-label {
+  font-size: 0.75rem;
+  color: var(--text-2);
+  font-weight: 500;
+  margin-bottom: 0.35rem;
+}
+
+.dash-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.dash-value.amber { color: var(--amber); }
+.dash-value.cyan { color: var(--cyan); }
+.dash-value.green { color: var(--green); }
+.dash-value.red { color: var(--red); }
+.dash-value.purple { color: var(--purple); }
+.dash-value.orange { color: var(--orange); }
+
+.dash-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--text-3);
+  margin-top: 0.2rem;
+}
+
+.sensitivity-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+}
+
+.sensitivity-table th {
+  background: var(--bg-2);
+  padding: 0.5rem 0.75rem;
+  text-align: center;
+  color: var(--text-2);
+  font-weight: 500;
+  border: 1px solid var(--border);
+  font-size: 0.72rem;
+  font-family: 'Noto Sans SC', sans-serif;
+}
+
+.sensitivity-table td {
+  padding: 0.45rem 0.75rem;
+  text-align: center;
+  border: 1px solid var(--border);
+  transition: background 0.15s;
+}
+
+.sensitivity-table tbody tr:hover td { background: var(--bg-2); }
+.sensitivity-table .row-header {
+  text-align: left;
+  color: var(--text-1);
+  background: var(--bg-0);
+  font-weight: 500;
+}
+
+.sensitivity-table .positive { color: var(--green); }
+.sensitivity-table .negative { color: var(--red); }
+.sensitivity-table .break-even { color: var(--amber); }
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+@media (max-width: 900px) {
+  .two-col { grid-template-columns: 1fr; }
+  .app { padding: 1rem; }
+  .param-grid { grid-template-columns: 1fr; }
+  .dashboard { grid-template-columns: repeat(2, 1fr); }
+}
+
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+  margin: 0.75rem 0;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-0); }
+::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 3px; }
+
+.warn-badge {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.warn-badge.memory-bound { background: var(--green-dim); color: var(--green); }
+.warn-badge.compute-bound { background: var(--orange-dim); color: var(--orange); }
+
+.step-nav {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.step-btn {
+  padding: 0.5rem 1.1rem;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-2);
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.step-btn:hover { border-color: var(--text-3); color: var(--text-1); }
+.step-btn.active {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: var(--amber-glow);
+}
+
+.step-content { display: none; }
+.step-content.active { display: block; }
+
+.legend {
+  display: flex;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.legend-dot {
+  width: 10px; height: 10px;
+  border-radius: 2px;
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <h1><span class="dot"></span>GPU 经济性计算器</h1>
+  <p>开源大模型 API 服务 — 成本与毛利测算 // 基于 Epoch AI Roofline 模型 V5</p>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div><span style="color:var(--text-2)">可编辑参数</span></div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div><span style="color:var(--text-2)">自动计算</span></div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div><span style="color:var(--text-2)">最终结果</span></div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div><span style="color:var(--text-2)">Epoch AI 论文基准</span></div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div><span style="color:var(--text-2)">效率折扣</span></div>
+  </div>
+</header>
+
+<!-- 仪表盘 -->
+<div class="dashboard">
+  <div class="dash-card amber">
+    <div class="dash-label">单副本最少GPU数</div>
+    <div class="dash-value amber" id="d-min-gpu">—</div>
+    <div class="dash-sub" id="d-vram-info"></div>
+  </div>
+  <div class="dash-card cyan">
+    <div class="dash-label">单用户解码速度 (batch=1)</div>
+    <div class="dash-value cyan" id="d-decode-speed">—</div>
+    <div class="dash-sub">tok/s</div>
+  </div>
+  <div class="dash-card purple">
+    <div class="dash-label">单副本峰值 QPS</div>
+    <div class="dash-value purple" id="d-peak-qps">—</div>
+    <div class="dash-sub">req/s</div>
+  </div>
+  <div class="dash-card orange">
+    <div class="dash-label">成本 $/百万token (云租赁)</div>
+    <div class="dash-value orange" id="d-cost-per-m">—</div>
+    <div class="dash-sub" id="d-cost-self"></div>
+  </div>
+  <div class="dash-card green">
+    <div class="dash-label">毛利率 (云租赁, 512卡)</div>
+    <div class="dash-value green" id="d-margin-cloud">—</div>
+    <div class="dash-sub" id="d-margin-self"></div>
+  </div>
+  <div class="dash-card red">
+    <div class="dash-label">单卡月产出</div>
+    <div class="dash-value red" id="d-monthly-output">—</div>
+    <div class="dash-sub">百万 token/月</div>
+  </div>
+</div>
+
+<!-- 步骤导航 -->
+<div class="step-nav">
+  <button class="step-btn active" data-step="step1">第一步：模型 &rarr; 单副本产能</button>
+  <button class="step-btn" data-step="step2">第二步：成本参数 &amp; 定价</button>
+  <button class="step-btn" data-step="step3">第三步：规模 &rarr; 毛利分析</button>
+</div>
+
+<!-- ══════════ 第一步 ══════════ -->
+<div class="step-content active" id="step1">
+
+<div class="section">
+  <div class="section-header" data-toggle>
+    <h2>A. 模型基础参数 <span class="tag tag-input">可编辑</span></h2>
+    <span class="chevron">&#9662;</span>
+  </div>
+  <div class="section-body">
+    <div class="preset-row">
+      <label>预设模型：</label>
+      <select id="model-preset">
+        <option value="">— 自定义 —</option>
+        <option value="dsv3">DeepSeek-V3 (671B MoE, FP8)</option>
+        <option value="kimi-k25">Kimi K2.5 (1T MoE, FP8)</option>
+        <option value="glm5">GLM-5 (745B MoE, FP8)</option>
+        <option value="maverick">Llama 4 Maverick (400B MoE)</option>
+        <option value="qwen3-235b">Qwen3-235B-A22B</option>
+        <option value="minimax-m25">MiniMax-M2.5 (230B MoE)</option>
+        <option value="kimi-k2">Kimi K2 (1T MoE, FP8)</option>
+        <option value="mistral-large">Mistral Large 2 (123B Dense)</option>
+        <option value="qwen35-122b" selected>Qwen3.5-122B-A10B</option>
+        <option value="scout">Llama 4 Scout (109B MoE)</option>
+        <option value="qwen25-72b">Qwen2.5-72B (Dense)</option>
+        <option value="llama-70b">Llama 3.3 70B (Dense)</option>
+        <option value="gemma-27b">Gemma 3 27B (Dense)</option>
+        <option value="phi4-14b">Phi-4 14B (Dense)</option>
+      </select>
+    </div>
+    <div class="param-grid">
+      <div class="param"><span class="param-label">模型名称</span><div class="param-right"><input type="text" id="model_name" value="Qwen3.5-122B-A10B" style="width:180px;color:var(--text-0)"></div></div>
+      <div class="param"><span class="param-label">总参数量 <span class="sub">P_total</span></span><div class="param-right"><input type="number" id="p_total" value="122" step="1"><span class="unit">B</span></div></div>
+      <div class="param"><span class="param-label">活跃参数量 <span class="sub">P_active</span></span><div class="param-right"><input type="number" id="p_active" value="10" step="1"><span class="unit">B</span></div></div>
+      <div class="param"><span class="param-label">每参数字节数 <span class="sub">BF16=2</span></span><div class="param-right"><input type="number" id="bytes_per_param" value="2" step="0.5"><span class="unit">Bytes</span></div></div>
+      <div class="param"><span class="param-label">隐藏层维度 <span class="sub">d_model</span></span><div class="param-right"><input type="number" id="d_model" value="5120" step="1"><span class="unit"></span></div></div>
+      <div class="param"><span class="param-label">Transformer 层数 <span class="sub">n_layers</span></span><div class="param-right"><input type="number" id="n_layers" value="64" step="1"><span class="unit">层</span></div></div>
+      <div class="param"><span class="param-label">KV Head 数量 <span class="sub">n_kv_heads</span></span><div class="param-right"><input type="number" id="n_kv_heads" value="4" step="1"><span class="unit">个</span></div></div>
+      <div class="param"><span class="param-label">Head 维度 <span class="sub">d_head</span></span><div class="param-right"><input type="number" id="d_head" value="128" step="1"><span class="unit"></span></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-header" data-toggle>
+    <h2>B. 推理场景假设 <span class="tag tag-input">可编辑</span></h2>
+    <span class="chevron">&#9662;</span>
+  </div>
+  <div class="section-body">
+    <div class="param-grid">
+      <div class="param"><span class="param-label">平均输入长度</span><div class="param-right"><input type="number" id="input_len" value="1024" step="128"><span class="unit">tokens</span></div></div>
+      <div class="param"><span class="param-label">平均输出长度</span><div class="param-right"><input type="number" id="output_len" value="256" step="64"><span class="unit">tokens</span></div></div>
+      <div class="param"><span class="param-label">最大上下文长度 (实际使用)</span><div class="param-right"><input type="number" id="max_context" value="8192" step="1024"><span class="unit">tokens</span></div></div>
+      <div class="param"><span class="param-label">Batch Size (单副本并发数)</span><div class="param-right"><input type="number" id="batch_size" value="32" step="1"><span class="unit"></span></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-header" data-toggle>
+    <h2>C. GPU 硬件参数 <span class="tag tag-input">可编辑</span></h2>
+    <span class="chevron">&#9662;</span>
+  </div>
+  <div class="section-body">
+    <div class="preset-row">
+      <label>GPU 型号：</label>
+      <div class="gpu-chips" id="gpu-chips">
+        <button class="gpu-chip active" data-gpu="h100">H100 SXM 80GB</button>
+        <button class="gpu-chip" data-gpu="h200">H200 141GB</button>
+        <button class="gpu-chip" data-gpu="a100">A100 80GB</button>
+        <button class="gpu-chip" data-gpu="l40s">L40S 48GB</button>
+      </div>
+    </div>
+    <div class="param-grid">
+      <div class="param"><span class="param-label">单卡显存</span><div class="param-right"><input type="number" id="gpu_vram" value="80" step="1"><span class="unit">GB</span></div></div>
+      <div class="param"><span class="param-label">单卡 HBM 带宽 (理论)</span><div class="param-right"><input type="number" id="hbm_bw" value="3.35" step="0.1"><span class="unit">TB/s</span></div></div>
+      <div class="param"><span class="param-label">单卡 TDP 功耗</span><div class="param-right"><input type="number" id="gpu_tdp" value="700" step="10"><span class="unit">W</span></div></div>
+      <div class="param"><span class="param-label">单卡 FP16 算力 (理论)</span><div class="param-right"><input type="number" id="fp16_tflops" value="989" step="10"><span class="unit">TFLOPS</span></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="section collapsed">
+  <div class="section-header" data-toggle>
+    <h2>D. 物理效率折扣 <span class="tag" style="background:var(--purple-dim);color:var(--purple)">Epoch AI 论文基准</span></h2>
+    <span class="chevron">&#9662;</span>
+  </div>
+  <div class="section-body">
+    <div class="param-grid">
+      <div class="param"><span class="param-label">HBM 带宽利用率</span><div class="param-right"><input type="number" id="hbm_util" value="75" step="5"><span class="unit">%</span></div></div>
+      <div class="param"><span class="param-label">算力利用率</span><div class="param-right"><input type="number" id="compute_util" value="70" step="5"><span class="unit">%</span></div></div>
+      <div class="param"><span class="param-label">NCCL 基础延迟 (LL协议)</span><div class="param-right"><input type="number" id="nccl_base" value="6.8" step="0.1"><span class="unit">us</span></div></div>
+      <div class="param"><span class="param-label">每层 All-Reduce 次数</span><div class="param-right"><input type="number" id="n_reduce" value="4" step="1"><span class="unit">次</span></div></div>
+      <div class="param"><span class="param-label">跨卡延迟增量</span><div class="param-right"><input type="number" id="rank_latency" value="1.2" step="0.1"><span class="unit">us/rank</span></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="section collapsed">
+  <div class="section-header" data-toggle>
+    <h2>E. 运营效率折扣 <span class="tag" style="background:var(--orange-dim);color:var(--orange)">业务层面</span></h2>
+    <span class="chevron">&#9662;</span>
+  </div>
+  <div class="section-body">
+    <div class="param-grid">
+      <div class="param"><span class="param-label">Batch 效率系数</span><div class="param-right"><input type="number" id="batch_eff" value="60" step="5"><span class="unit">%</span></div></div>
+      <div class="param"><span class="param-label">调度效率 (Scheduling)</span><div class="param-right"><input type="number" id="sched_eff" value="80" step="5"><span class="unit">%</span></div></div>
+      <div class="param"><span class="param-label">Prefill/Decode 速度比</span><div class="param-right"><input type="number" id="prefill_ratio" value="20" step="1"><span class="unit">x</span></div></div>
+      <div class="param"><span class="param-label">GPU 平均利用率</span><div class="param-right"><input type="number" id="gpu_util" value="30" step="5"><span class="unit">%</span></div></div>
+      <div class="param"><span class="param-label">系统可用性 (Uptime)</span><div class="param-right"><input type="number" id="uptime" value="99.5" step="0.5"><span class="unit">%</span></div></div>
+      <div class="param"><span class="param-label">投机解码加速比</span><div class="param-right"><input type="number" id="spec_decode" value="1" step="0.1"><span class="unit">x</span></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-header" data-toggle>
+    <h2>F-G. 显存需求 &amp; 吞吐量计算 <span class="tag tag-computed">自动计算</span></h2>
+    <span class="chevron">&#9662;</span>
+  </div>
+  <div class="section-body">
+    <div class="param-grid param-grid-wide">
+      <div class="param computed"><span class="param-label">模型权重显存</span><div class="param-right"><span class="val" id="r-weight-vram">—</span><span class="unit">GB</span></div></div>
+      <div class="param computed"><span class="param-label">单请求 KV Cache</span><div class="param-right"><span class="val" id="r-single-kv">—</span><span class="unit">GB</span></div></div>
+      <div class="param computed"><span class="param-label">Batch KV Cache 总量</span><div class="param-right"><span class="val" id="r-batch-kv">—</span><span class="unit">GB</span></div></div>
+      <div class="param computed"><span class="param-label">系统开销 (15%)</span><div class="param-right"><span class="val" id="r-overhead">—</span><span class="unit">GB</span></div></div>
+      <div class="param computed star"><span class="param-label">单副本总显存需求</span><div class="param-right"><span class="val" id="r-total-vram">—</span><span class="unit">GB</span></div></div>
+      <div class="param computed star"><span class="param-label">单副本最少 GPU 数</span><div class="param-right"><span class="val" id="r-min-gpu">—</span><span class="unit">张</span></div></div>
+    </div>
+    <div class="divider"></div>
+    <div class="param-grid param-grid-wide">
+      <div class="param computed"><span class="param-label">有效 HBM 总带宽 (含折扣)</span><div class="param-right"><span class="val" id="r-eff-bw">—</span><span class="unit">TB/s</span></div></div>
+      <div class="param computed"><span class="param-label">有效 FP16 总算力 (含折扣)</span><div class="param-right"><span class="val" id="r-eff-compute">—</span><span class="unit">TFLOPS</span></div></div>
+      <div class="param computed"><span class="param-label">单 token 数据搬运量 (活跃参数)</span><div class="param-right"><span class="val" id="r-data-tok">—</span><span class="unit">GB</span></div></div>
+      <div class="param computed"><span class="param-label">Memory-bound 耗时</span><div class="param-right"><span class="val" id="r-mem-time">—</span><span class="unit">ms</span></div></div>
+      <div class="param computed"><span class="param-label">TP 通信延迟</span><div class="param-right"><span class="val" id="r-tp-latency">—</span><span class="unit">ms</span></div></div>
+      <div class="param computed"><span class="param-label">Compute-bound 耗时</span><div class="param-right"><span class="val" id="r-compute-time">—</span><span class="unit">ms</span></div></div>
+      <div class="param computed star"><span class="param-label">Token 延迟 (batch=1)</span><div class="param-right"><span class="val" id="r-token-latency">—</span><span class="unit">ms</span></div></div>
+      <div class="param computed"><span class="param-label">Roofline 判定</span><div class="param-right"><span class="warn-badge" id="r-regime">—</span></div></div>
+      <div class="param computed star"><span class="param-label">单用户 Decode 速度 (batch=1)</span><div class="param-right"><span class="val" id="r-decode-speed">—</span><span class="unit">tok/s</span></div></div>
+      <div class="param computed"><span class="param-label">投机解码后速度</span><div class="param-right"><span class="val" id="r-spec-speed">—</span><span class="unit">tok/s</span></div></div>
+      <div class="param computed"><span class="param-label">理论最优 Batch Size (b*)</span><div class="param-right"><span class="val" id="r-optimal-batch">—</span><span class="unit"></span></div></div>
+      <div class="param computed star"><span class="param-label">Batch 吞吐量 (含全部折扣)</span><div class="param-right"><span class="val" id="r-batch-tp">—</span><span class="unit">tok/s</span></div></div>
+      <div class="param computed star"><span class="param-label">单副本峰值 QPS (含调度折扣)</span><div class="param-right"><span class="val" id="r-peak-qps">—</span><span class="unit">req/s</span></div></div>
+      <div class="param computed star"><span class="param-label">单副本有效 QPS (含利用率)</span><div class="param-right"><span class="val" id="r-eff-qps">—</span><span class="unit">req/s</span></div></div>
+      <div class="param computed star"><span class="param-label">单副本理论月产出</span><div class="param-right"><span class="val" id="r-monthly-rep">—</span><span class="unit">百万tok</span></div></div>
+      <div class="param computed star"><span class="param-label">单卡理论月产出</span><div class="param-right"><span class="val" id="r-monthly-gpu">—</span><span class="unit">百万tok</span></div></div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<!-- ══════════ 第二步 ══════════ -->
+<div class="step-content" id="step2">
+
+<div class="two-col">
+  <div class="section">
+    <div class="section-header" data-toggle>
+      <h2>方案 A：云租赁 <span class="tag tag-input">可编辑</span></h2>
+      <span class="chevron">&#9662;</span>
+    </div>
+    <div class="section-body">
+      <div class="param-grid" style="grid-template-columns:1fr">
+        <div class="param"><span class="param-label">GPU 租赁价 ($/小时/卡)</span><div class="param-right"><input type="number" id="gpu_price_hr" value="2" step="0.1"><span class="unit">$/hr</span></div></div>
+        <div class="param"><span class="param-label">云出口带宽费 ($/GB)</span><div class="param-right"><input type="number" id="cloud_egress" value="0.08" step="0.01"><span class="unit">$/GB</span></div></div>
+      </div>
+      <div class="divider"></div>
+      <div class="param computed star" style="margin-top:0.5rem"><span class="param-label">每GPU月成本</span><div class="param-right"><span class="val" id="r-cloud-cost-gpu">—</span><span class="unit">$</span></div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" data-toggle>
+      <h2>方案 B：自建机房 <span class="tag tag-input">可编辑</span></h2>
+      <span class="chevron">&#9662;</span>
+    </div>
+    <div class="section-body">
+      <div class="param-grid" style="grid-template-columns:1fr">
+        <div class="param"><span class="param-label">单台服务器购买价 (8卡)</span><div class="param-right"><input type="number" id="server_price" value="255000" step="1000"><span class="unit">$</span></div></div>
+        <div class="param"><span class="param-label">网络设备总支出</span><div class="param-right"><input type="number" id="network_capex" value="11500000" step="100000"><span class="unit">$</span></div></div>
+        <div class="param"><span class="param-label">其他总支出 (保险/布线等)</span><div class="param-right"><input type="number" id="other_capex" value="500000" step="10000"><span class="unit">$</span></div></div>
+        <div class="param"><span class="param-label">集群规模</span><div class="param-right"><input type="number" id="fleet_gpus" value="256" step="8"><span class="unit">卡</span></div></div>
+        <div class="param"><span class="param-label">折旧年限</span><div class="param-right"><input type="number" id="deprec_years" value="4" step="1"><span class="unit">年</span></div></div>
+        <div class="param"><span class="param-label">设备进口税率</span><div class="param-right"><input type="number" id="capex_tax" value="5" step="1"><span class="unit">%</span></div></div>
+        <div class="param"><span class="param-label">工业电价</span><div class="param-right"><input type="number" id="elec_price" value="0.06" step="0.01"><span class="unit">$/kWh</span></div></div>
+        <div class="param"><span class="param-label">PUE (电力使用效率)</span><div class="param-right"><input type="number" id="pue" value="1.5" step="0.1"><span class="unit"></span></div></div>
+        <div class="param"><span class="param-label">单台服务器功耗</span><div class="param-right"><input type="number" id="server_power" value="10.2" step="0.1"><span class="unit">kW</span></div></div>
+        <div class="param"><span class="param-label">网络设备功耗 (每台服务器)</span><div class="param-right"><input type="number" id="net_power" value="1" step="0.1"><span class="unit">kW</span></div></div>
+        <div class="param"><span class="param-label">数据中心租金</span><div class="param-right"><input type="number" id="dc_rent" value="105" step="5"><span class="unit">$/kW/月</span></div></div>
+        <div class="param"><span class="param-label">一次性机房改造费</span><div class="param-right"><input type="number" id="renovation" value="0" step="10000"><span class="unit">$</span></div></div>
+        <div class="param"><span class="param-label">年维保费率</span><div class="param-right"><input type="number" id="maint_pct" value="10" step="1"><span class="unit">%</span></div></div>
+        <div class="param"><span class="param-label">债务利率</span><div class="param-right"><input type="number" id="debt_rate" value="12" step="1"><span class="unit">%/年</span></div></div>
+        <div class="param"><span class="param-label">债务/总支出比率</span><div class="param-right"><input type="number" id="debt_ratio" value="70" step="5"><span class="unit">%</span></div></div>
+        <div class="param"><span class="param-label">运营管理费</span><div class="param-right"><input type="number" id="ops_fee" value="5" step="1"><span class="unit">%</span></div></div>
+        <div class="param"><span class="param-label">服务税率</span><div class="param-right"><input type="number" id="svc_tax" value="8" step="1"><span class="unit">%</span></div></div>
+      </div>
+      <div class="divider"></div>
+      <div class="param computed star" style="margin-top:0.5rem"><span class="param-label">每台服务器月成本 (8卡)</span><div class="param-right"><span class="val" id="r-self-cost-sv">—</span><span class="unit">$</span></div></div>
+      <div class="param computed star" style="margin-top:0.3rem"><span class="param-label">每GPU月成本</span><div class="param-right"><span class="val" id="r-self-cost-gpu">—</span><span class="unit">$</span></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-header" data-toggle>
+    <h2>API 定价 <span class="tag tag-input">可编辑</span></h2>
+    <span class="chevron">&#9662;</span>
+  </div>
+  <div class="section-body">
+    <div class="param-grid">
+      <div class="param"><span class="param-label">Output 定价</span><div class="param-right"><input type="number" id="output_price" value="2.08" step="0.1"><span class="unit">$/百万tok</span></div></div>
+      <div class="param"><span class="param-label">Input 定价</span><div class="param-right"><input type="number" id="input_price" value="0.26" step="0.05"><span class="unit">$/百万tok</span></div></div>
+      <div class="param"><span class="param-label">收入折损率 (免费额度/坏账)</span><div class="param-right"><input type="number" id="revenue_loss" value="5" step="1"><span class="unit">%</span></div></div>
+      <div class="param"><span class="param-label">刊例价折扣</span><div class="param-right"><input type="number" id="price_discount" value="100" step="5"><span class="unit">%</span></div></div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<!-- ══════════ 第三步 ══════════ -->
+<div class="step-content" id="step3">
+
+<div class="section">
+  <div class="section-header" data-toggle>
+    <h2>规模 &rarr; 成本 &rarr; 毛利 <span class="tag tag-result">结果</span></h2>
+    <span class="chevron">&#9662;</span>
+  </div>
+  <div class="section-body">
+    <div style="overflow-x:auto">
+      <table class="sensitivity-table">
+        <thead>
+          <tr>
+            <th>GPU 卡数</th>
+            <th>月产出 (百万tok)</th>
+            <th>云租赁月成本 ($)</th>
+            <th>自建月成本 ($)</th>
+            <th>月净收入 ($)</th>
+            <th>毛利率A (云)</th>
+            <th>毛利率B (自建)</th>
+            <th>成本$/百万tok (A)</th>
+            <th>成本$/百万tok (B)</th>
+          </tr>
+        </thead>
+        <tbody id="scale-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-header" data-toggle>
+    <h2>方案A 毛利率敏感性分析 (利用率 x 刊例价折扣) <span class="tag tag-result">结果</span></h2>
+    <span class="chevron">&#9662;</span>
+  </div>
+  <div class="section-body">
+    <div class="preset-row">
+      <label>GPU 规模：</label>
+      <input type="number" id="sens-gpus" value="512" step="8" style="background:var(--bg-0);border:1px solid var(--border);color:var(--amber);font-family:'JetBrains Mono',monospace;font-size:0.82rem;padding:0.45rem 0.75rem;border-radius:5px;width:120px;outline:none">
+      <span style="font-size:0.75rem;color:var(--text-3)">卡</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="sensitivity-table">
+        <thead>
+          <tr>
+            <th>利用率 \ 折扣</th>
+            <th>60%</th>
+            <th>70%</th>
+            <th>80%</th>
+            <th>90%</th>
+            <th>100%</th>
+          </tr>
+        </thead>
+        <tbody id="sens-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div>
+
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  var MODEL_PRESETS = {
+    'dsv3':        { name:'DeepSeek-V3 (671B FP8)', p_total:671, p_active:37, bytes:1, d_model:7168, n_layers:61, n_kv_heads:128, d_head:128, batch_eff:60, spec:1.5 },
+    'kimi-k25':    { name:'Kimi K2.5 (1T FP8)', p_total:1000, p_active:32, bytes:1, d_model:7168, n_layers:61, n_kv_heads:64, d_head:128, batch_eff:55, spec:1.5 },
+    'glm5':        { name:'GLM-5 (745B FP8)', p_total:745, p_active:44, bytes:1, d_model:6144, n_layers:78, n_kv_heads:64, d_head:64, batch_eff:55, spec:1.5 },
+    'maverick':    { name:'Llama 4 Maverick (400B)', p_total:400, p_active:17, bytes:2, d_model:5120, n_layers:48, n_kv_heads:8, d_head:128, batch_eff:65, spec:1.5 },
+    'qwen3-235b':  { name:'Qwen3-235B-A22B', p_total:235, p_active:22, bytes:2, d_model:4096, n_layers:94, n_kv_heads:4, d_head:128, batch_eff:65, spec:1.5 },
+    'minimax-m25': { name:'MiniMax-M2.5 (230B)', p_total:230, p_active:10, bytes:2, d_model:3072, n_layers:62, n_kv_heads:8, d_head:128, batch_eff:65, spec:1.5 },
+    'kimi-k2':     { name:'Kimi K2 (1T FP8)', p_total:1000, p_active:32, bytes:1, d_model:6144, n_layers:61, n_kv_heads:64, d_head:192, batch_eff:55, spec:1.5 },
+    'mistral-large':{ name:'Mistral Large 2 (123B)', p_total:123, p_active:123, bytes:2, d_model:12288, n_layers:88, n_kv_heads:8, d_head:128, batch_eff:60, spec:1.8 },
+    'qwen35-122b': { name:'Qwen3.5-122B-A10B', p_total:122, p_active:10, bytes:2, d_model:5120, n_layers:64, n_kv_heads:4, d_head:128, batch_eff:60, spec:1.5 },
+    'scout':       { name:'Llama 4 Scout (109B)', p_total:109, p_active:17, bytes:2, d_model:5120, n_layers:48, n_kv_heads:8, d_head:128, batch_eff:65, spec:1.5 },
+    'qwen25-72b':  { name:'Qwen2.5-72B', p_total:72, p_active:72, bytes:2, d_model:8192, n_layers:80, n_kv_heads:8, d_head:128, batch_eff:70, spec:1.8 },
+    'llama-70b':   { name:'Llama 3.3 70B', p_total:70, p_active:70, bytes:2, d_model:8192, n_layers:80, n_kv_heads:8, d_head:128, batch_eff:70, spec:1.8 },
+    'gemma-27b':   { name:'Gemma 3 27B', p_total:27, p_active:27, bytes:2, d_model:4608, n_layers:46, n_kv_heads:4, d_head:128, batch_eff:80, spec:2.0 },
+    'phi4-14b':    { name:'Phi-4 14B', p_total:14, p_active:14, bytes:2, d_model:5120, n_layers:40, n_kv_heads:10, d_head:128, batch_eff:85, spec:2.0 }
+  };
+
+  var GPU_PRESETS = {
+    'h100': { vram:80, bw:3.35, tdp:700, tflops:989 },
+    'h200': { vram:141, bw:4.8, tdp:700, tflops:989 },
+    'a100': { vram:80, bw:2.0, tdp:400, tflops:312 },
+    'l40s': { vram:48, bw:0.864, tdp:350, tflops:362 }
+  };
+
+  function $(id) { return document.getElementById(id); }
+  function V(id) { return parseFloat($(id).value) || 0; }
+
+  function fmt(n, d) {
+    if (d === undefined) d = 2;
+    if (isNaN(n) || !isFinite(n)) return '\u2014';
+    if (Math.abs(n) >= 1e6) return (n/1e6).toFixed(1) + 'M';
+    if (Math.abs(n) >= 1e4) return (n/1e3).toFixed(1) + 'K';
+    return n.toFixed(d);
+  }
+
+  function pct(n) {
+    if (isNaN(n) || !isFinite(n)) return '\u2014';
+    return (n * 100).toFixed(1) + '%';
+  }
+
+  // 折叠/展开
+  document.querySelectorAll('[data-toggle]').forEach(function(header) {
+    header.addEventListener('click', function() {
+      this.closest('.section').classList.toggle('collapsed');
+    });
+  });
+
+  // 步骤切换
+  document.querySelectorAll('.step-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.step-btn').forEach(function(b) { b.classList.remove('active'); });
+      document.querySelectorAll('.step-content').forEach(function(c) { c.classList.remove('active'); });
+      btn.classList.add('active');
+      $(btn.dataset.step).classList.add('active');
+    });
+  });
+
+  // 模型预设
+  $('model-preset').addEventListener('change', function() {
+    var key = this.value;
+    if (!key || !MODEL_PRESETS[key]) return;
+    var m = MODEL_PRESETS[key];
+    $('model_name').value = m.name;
+    $('p_total').value = m.p_total;
+    $('p_active').value = m.p_active;
+    $('bytes_per_param').value = m.bytes;
+    $('d_model').value = m.d_model;
+    $('n_layers').value = m.n_layers;
+    $('n_kv_heads').value = m.n_kv_heads;
+    $('d_head').value = m.d_head;
+    $('batch_eff').value = m.batch_eff;
+    $('spec_decode').value = m.spec;
+    recalc();
+  });
+
+  // GPU 预设
+  $('gpu-chips').addEventListener('click', function(e) {
+    var chip = e.target.closest('[data-gpu]');
+    if (!chip) return;
+    var g = GPU_PRESETS[chip.dataset.gpu];
+    if (!g) return;
+    $('gpu_vram').value = g.vram;
+    $('hbm_bw').value = g.bw;
+    $('gpu_tdp').value = g.tdp;
+    $('fp16_tflops').value = g.tflops;
+    document.querySelectorAll('.gpu-chip').forEach(function(c) { c.classList.remove('active'); });
+    chip.classList.add('active');
+    recalc();
+  });
+
+  function makeTd(text, cls) {
+    var td = document.createElement('td');
+    td.textContent = text;
+    if (cls) td.className = cls;
+    return td;
+  }
+
+  // ═══════════════ 核心计算：模型→单副本产能 ═══════════════
+  function calcStep1() {
+    var p_total = V('p_total');         // 总参数量 (B)
+    var p_active = V('p_active');       // 活跃参数量 (B)
+    var bpp = V('bytes_per_param');     // 每参数字节数
+    var n_layers = V('n_layers');       // Transformer层数
+    var n_kv = V('n_kv_heads');         // KV Head数量
+    var d_head = V('d_head');           // Head维度
+    var max_ctx = V('max_context');     // 最大上下文
+    var batch = V('batch_size');        // Batch Size
+    var gpu_vram = V('gpu_vram');       // 单卡显存 (GB)
+    var hbm_bw = V('hbm_bw');          // 单卡HBM带宽 (TB/s)
+    var fp16 = V('fp16_tflops');        // 单卡FP16算力 (TFLOPS)
+    var hbm_util = V('hbm_util') / 100;      // HBM带宽利用率
+    var comp_util = V('compute_util') / 100;  // 算力利用率
+    var nccl = V('nccl_base');          // NCCL基础延迟 (μs)
+    var n_reduce = V('n_reduce');       // 每层All-Reduce次数
+    var rank_lat = V('rank_latency');   // 跨卡延迟增量 (μs/rank)
+    var batch_eff = V('batch_eff') / 100;     // Batch效率
+    var sched_eff = V('sched_eff') / 100;     // 调度效率
+    var prefill_ratio = V('prefill_ratio');    // Prefill/Decode速度比
+    var gpu_util = V('gpu_util') / 100;       // GPU平均利用率
+    var uptime_v = V('uptime') / 100;         // 系统可用性
+    var spec = V('spec_decode');        // 投机解码加速比
+    var input_len = V('input_len');     // 平均输入长度
+    var output_len = V('output_len');   // 平均输出长度
+
+    // ── F. 显存需求 ──
+    // 模型权重显存 = P_total × bytes_per_param (GB)
+    var weight_vram = p_total * bpp;
+    // 单请求KV Cache = 2 × n_layers × n_kv_heads × d_head × max_context × bytes / (1024³)
+    var single_kv = 2 * n_layers * n_kv * d_head * max_ctx * bpp / (1024*1024*1024);
+    // Batch KV Cache = 单请求 × batch_size
+    var batch_kv = single_kv * batch;
+    // 系统开销 ≈ (权重 + KV) × 15%
+    var overhead = (weight_vram + batch_kv) * 0.15;
+    // 总显存 = 权重 + Batch KV + 开销
+    var total_vram = weight_vram + batch_kv + overhead;
+    // 最少GPU数 = ⌈总显存 / 单卡显存⌉, 最少1张
+    var min_gpu = Math.max(1, Math.ceil(total_vram / gpu_vram));
+    // p_active 不应超过 p_total
+    if (p_active > p_total) p_active = p_total;
+
+    // ── G. 吞吐量 (Epoch AI Roofline) ──
+    // 有效带宽 = GPU数 × 理论带宽 × 利用率
+    var eff_bw = min_gpu * hbm_bw * hbm_util;           // TB/s
+    // 有效算力 = GPU数 × 理论算力 × 利用率
+    var eff_compute = min_gpu * fp16 * comp_util;         // TFLOPS
+    // 单token数据搬运量 = P_active × bytes_per_param
+    var data_per_tok = p_active * bpp;                    // GB
+    // Memory-bound耗时 = 数据量 / 带宽
+    var mem_time = data_per_tok / (eff_bw * 1000) * 1000; // ms
+    // TP通信延迟 = n_layers × n_reduce × (基础延迟 + 跨卡延迟 × (GPU-1))
+    var tp_latency = n_layers * n_reduce * (nccl + rank_lat * (min_gpu - 1)) / 1000; // ms
+    // Compute-bound耗时 = 2 × N_active / C_effective
+    var compute_time = 2 * p_active * 1e9 / (eff_compute * 1e12) * 1000; // ms
+    // Token延迟 = max(Memory耗时, Compute耗时) + 通信延迟
+    var token_latency = Math.max(mem_time, compute_time) + tp_latency;
+    // 单用户Decode速度
+    var decode_speed = 1000 / token_latency;              // tok/s
+    // 投机解码后速度 (guard: spec=0 → 退化为无投机)
+    var spec_speed = decode_speed * (spec > 0 ? spec : 1); // tok/s
+    // 理论最优Batch = p × C / (B × 2)
+    var optimal_batch = bpp * eff_compute * 1000 / (eff_bw * 1000 * 2);
+    var is_compute_bound = batch > optimal_batch;
+    // Batch吞吐量 = 速度 × Batch × Batch效率
+    var batch_throughput = spec_speed * batch * batch_eff; // tok/s
+    // 请求耗时
+    var decode_time = output_len / spec_speed;            // s
+    var prefill_time = input_len / (spec_speed * (prefill_ratio > 0 ? prefill_ratio : 1)); // s
+    var request_time = prefill_time + decode_time;        // s
+    // 峰值QPS = Batch / 请求耗时 × 调度效率
+    var peak_qps = batch / request_time * sched_eff;
+    // 有效QPS = 峰值 × 利用率 × 可用性
+    var eff_qps = peak_qps * gpu_util * uptime_v;
+    // 理论月产出 (百万token/月)
+    var theory_monthly = batch_throughput * 60 * 60 * 24 * 30 / 1e6;
+    // 单卡理论月产出
+    var per_gpu_monthly = theory_monthly / min_gpu;
+
+    return {
+      weight_vram: weight_vram, single_kv: single_kv, batch_kv: batch_kv,
+      overhead: overhead, total_vram: total_vram, min_gpu: min_gpu,
+      eff_bw: eff_bw, eff_compute: eff_compute, data_per_tok: data_per_tok,
+      mem_time: mem_time, tp_latency: tp_latency, compute_time: compute_time,
+      token_latency: token_latency, decode_speed: decode_speed,
+      spec_speed: spec_speed, optimal_batch: optimal_batch,
+      is_compute_bound: is_compute_bound, batch_throughput: batch_throughput,
+      decode_time: decode_time, prefill_time: prefill_time,
+      request_time: request_time, peak_qps: peak_qps, eff_qps: eff_qps,
+      theory_monthly: theory_monthly, per_gpu_monthly: per_gpu_monthly,
+      gpu_util: gpu_util, uptime_v: uptime_v
+    };
+  }
+
+  // ═══════════════ 自建机房成本计算 ═══════════════
+  function calcSelfBuildCostPerServer() {
+    var server_price = V('server_price');
+    var network_capex = V('network_capex');
+    var other_capex = V('other_capex');
+    var fleet = V('fleet_gpus');
+    var fleet_sv = fleet / 8;
+    if (fleet_sv < 1) return { total: 0, per_gpu: 0 };
+    var deprec = V('deprec_years');
+    if (deprec < 1) deprec = 1;
+    var capex_tax_r = V('capex_tax') / 100;
+    var elec = V('elec_price');
+    var pue_v = V('pue');
+    var sv_power = V('server_power');
+    var net_power_per_sv = V('net_power');
+    var dc_rent = V('dc_rent');
+    var renovation = V('renovation');
+    var debt_rate = V('debt_rate') / 100;
+    var debt_ratio = V('debt_ratio') / 100;
+    var ops_fee = V('ops_fee') / 100;
+    var svc_tax = V('svc_tax') / 100;
+
+    // 总资本支出
+    var total_capex = server_price * fleet_sv + network_capex + other_capex;
+    // 进口税
+    var capex_tax_amt = (server_price * fleet_sv + network_capex) * capex_tax_r;
+
+    // Capex月化 (每台服务器)
+    var gpu_monthly = server_price / 12 / deprec;
+    var net_monthly = network_capex / fleet_sv / 12 / deprec;
+    var other_monthly = other_capex / 12 / deprec / fleet_sv;
+    var tax_monthly = capex_tax_amt / 12 / deprec / fleet_sv;
+    var capex_per_sv = gpu_monthly + net_monthly + other_monthly + tax_monthly;
+
+    // Opex月化 (每台服务器)
+    var power_sv = sv_power * pue_v * elec * 24 * 365 / 12;
+    var power_net = net_power_per_sv * pue_v * elec * 24 * 365 / 12;
+    var dc_cost = (sv_power + net_power_per_sv) * dc_rent;
+    var renov_monthly = renovation / 36 / fleet_sv;
+    var opex_per_sv = power_sv + power_net + dc_cost + renov_monthly;
+
+    // 资金成本 (PMT计算)
+    var loan_amount = total_capex * debt_ratio;
+    var monthly_rate = debt_rate / 12;
+    var n_months = 36;
+    var total_interest = 0;
+    if (monthly_rate > 0 && loan_amount > 0) {
+      var pmt = loan_amount * monthly_rate / (1 - Math.pow(1 + monthly_rate, -n_months));
+      total_interest = pmt * n_months - loan_amount;
+    }
+    var finance_per_sv = total_interest / 12 / deprec / fleet_sv;
+
+    // 含管理费和税
+    var subtotal = (capex_per_sv + opex_per_sv) * (1 + ops_fee) * (1 + svc_tax) + finance_per_sv;
+
+    return { total: subtotal, per_gpu: subtotal / 8 };
+  }
+
+  // ═══════════════ 全局重算 ═══════════════
+  function recalc() {
+    var s1 = calcStep1();
+
+    // 显存 & 吞吐
+    $('r-weight-vram').textContent = fmt(s1.weight_vram);
+    $('r-single-kv').textContent = fmt(s1.single_kv, 4);
+    $('r-batch-kv').textContent = fmt(s1.batch_kv);
+    $('r-overhead').textContent = fmt(s1.overhead);
+    $('r-total-vram').textContent = fmt(s1.total_vram);
+    $('r-min-gpu').textContent = String(s1.min_gpu);
+    $('r-eff-bw').textContent = fmt(s1.eff_bw);
+    $('r-eff-compute').textContent = fmt(s1.eff_compute);
+    $('r-data-tok').textContent = fmt(s1.data_per_tok);
+    $('r-mem-time').textContent = fmt(s1.mem_time, 3);
+    $('r-tp-latency').textContent = fmt(s1.tp_latency, 3);
+    $('r-compute-time').textContent = fmt(s1.compute_time, 4);
+    $('r-token-latency').textContent = fmt(s1.token_latency, 3);
+    $('r-decode-speed').textContent = fmt(s1.decode_speed);
+    $('r-spec-speed').textContent = fmt(s1.spec_speed);
+    $('r-optimal-batch').textContent = fmt(s1.optimal_batch, 1);
+    $('r-batch-tp').textContent = fmt(s1.batch_throughput);
+    $('r-peak-qps').textContent = fmt(s1.peak_qps, 3);
+    $('r-eff-qps').textContent = fmt(s1.eff_qps, 3);
+    $('r-monthly-rep').textContent = fmt(s1.theory_monthly, 1);
+    $('r-monthly-gpu').textContent = fmt(s1.per_gpu_monthly, 1);
+
+    var regime = $('r-regime');
+    regime.textContent = s1.is_compute_bound ? 'Compute-bound' : 'Memory-bound';
+    regime.className = 'warn-badge ' + (s1.is_compute_bound ? 'compute-bound' : 'memory-bound');
+
+    // 成本
+    var cloud_cost_gpu = V('gpu_price_hr') * 24 * 30;
+    $('r-cloud-cost-gpu').textContent = fmt(cloud_cost_gpu, 0);
+
+    var selfBuild = calcSelfBuildCostPerServer();
+    $('r-self-cost-sv').textContent = fmt(selfBuild.total, 0);
+    $('r-self-cost-gpu').textContent = fmt(selfBuild.per_gpu, 0);
+
+    // 仪表盘
+    $('d-min-gpu').textContent = String(s1.min_gpu);
+    $('d-vram-info').textContent = fmt(s1.total_vram, 0) + ' GB';
+    $('d-decode-speed').textContent = fmt(s1.decode_speed, 1);
+    $('d-peak-qps').textContent = fmt(s1.peak_qps, 2);
+    $('d-monthly-output').textContent = fmt(s1.per_gpu_monthly, 1);
+
+    var eff_monthly_per_gpu = s1.per_gpu_monthly * s1.gpu_util * s1.uptime_v;
+    var cost_per_m_cloud = eff_monthly_per_gpu > 0 ? cloud_cost_gpu / eff_monthly_per_gpu : Infinity;
+    var cost_per_m_self = eff_monthly_per_gpu > 0 ? selfBuild.per_gpu / eff_monthly_per_gpu : Infinity;
+    $('d-cost-per-m').textContent = '$' + fmt(cost_per_m_cloud);
+    $('d-cost-self').textContent = '自建: $' + fmt(cost_per_m_self) + '/M';
+
+    var output_price_v = V('output_price');
+    var discount = V('price_discount') / 100;
+    var ref_gpus = 512;
+    var ref_monthly_output = s1.per_gpu_monthly * s1.gpu_util * s1.uptime_v * ref_gpus;
+    var ref_revenue = ref_monthly_output * output_price_v * discount;
+    var ref_cloud_cost = ref_gpus * cloud_cost_gpu;
+    var ref_self_cost = ref_gpus * selfBuild.per_gpu;
+    var margin_cloud = ref_revenue > 0 ? (ref_revenue - ref_cloud_cost) / ref_revenue : 0;
+    var margin_self = ref_revenue > 0 ? (ref_revenue - ref_self_cost) / ref_revenue : 0;
+
+    var dmc = $('d-margin-cloud');
+    dmc.textContent = pct(margin_cloud);
+    dmc.className = 'dash-value ' + (margin_cloud >= 0 ? 'green' : 'red');
+    $('d-margin-self').textContent = '自建: ' + pct(margin_self);
+
+    // 规模表
+    var scales = [64, 512, 4096, 32768];
+    var tbody = $('scale-tbody');
+    while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+
+    scales.forEach(function(gpus) {
+      var monthly_out = s1.per_gpu_monthly * s1.gpu_util * s1.uptime_v * gpus;
+      var c_cost = gpus * cloud_cost_gpu;
+      var s_cost = gpus * selfBuild.per_gpu;
+      var rev = monthly_out * output_price_v * discount;
+      var m_a = rev > 0 ? (rev - c_cost) / rev : 0;
+      var m_b = rev > 0 ? (rev - s_cost) / rev : 0;
+      var cpm_a = monthly_out > 0 ? c_cost / monthly_out : 0;
+      var cpm_b = monthly_out > 0 ? s_cost / monthly_out : 0;
+
+      var tr = document.createElement('tr');
+      tr.appendChild(makeTd(gpus.toLocaleString(), 'row-header'));
+      tr.appendChild(makeTd(fmt(monthly_out, 0)));
+      tr.appendChild(makeTd('$' + fmt(c_cost, 0)));
+      tr.appendChild(makeTd('$' + fmt(s_cost, 0)));
+      tr.appendChild(makeTd('$' + fmt(rev, 0)));
+      tr.appendChild(makeTd(pct(m_a), m_a >= 0 ? 'positive' : 'negative'));
+      tr.appendChild(makeTd(pct(m_b), m_b >= 0 ? 'positive' : 'negative'));
+      tr.appendChild(makeTd('$' + fmt(cpm_a)));
+      tr.appendChild(makeTd('$' + fmt(cpm_b)));
+      tbody.appendChild(tr);
+    });
+
+    // 敏感性分析
+    var sens_gpus = parseFloat($('sens-gpus').value) || 512;
+    var utils = [0.1, 0.2, 0.3, 0.4, 0.5];
+    var discounts = [0.6, 0.7, 0.8, 0.9, 1.0];
+    var stbody = $('sens-tbody');
+    while (stbody.firstChild) stbody.removeChild(stbody.firstChild);
+
+    utils.forEach(function(u) {
+      var tr = document.createElement('tr');
+      tr.appendChild(makeTd((u*100).toFixed(0) + '%', 'row-header'));
+      discounts.forEach(function(d) {
+        var m_out = s1.per_gpu_monthly * u * s1.uptime_v * sens_gpus;
+        var rev_s = m_out * output_price_v * d;
+        var cost_s = sens_gpus * cloud_cost_gpu;
+        var margin = rev_s > 0 ? (rev_s - cost_s) / rev_s : -1;
+        var cls = 'negative';
+        if (margin >= 0.05) cls = 'positive';
+        else if (margin >= -0.02) cls = 'break-even';
+        tr.appendChild(makeTd(pct(margin), cls));
+      });
+      stbody.appendChild(tr);
+    });
+  }
+
+  // 输入变化自动重算
+  document.querySelectorAll('input[type="number"], input[type="text"]').forEach(function(inp) {
+    inp.addEventListener('input', recalc);
+  });
+
+  recalc();
+})();
+</script>
+</body>
+</html>
