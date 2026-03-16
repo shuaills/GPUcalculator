@@ -589,10 +589,16 @@ header p {
     <div class="preset-row">
       <label>GPU:</label>
       <div class="gpu-chips" id="gpu-chips">
-        <button class="gpu-chip active" data-gpu="h100">H100 SXM 80GB</button>
+        <button class="gpu-chip" data-gpu="b300">B300 288GB</button>
+        <button class="gpu-chip" data-gpu="b200">B200 192GB</button>
+        <button class="gpu-chip" data-gpu="b100">B100 192GB</button>
         <button class="gpu-chip" data-gpu="h200">H200 141GB</button>
+        <button class="gpu-chip active" data-gpu="h100">H100 SXM 80GB</button>
+        <button class="gpu-chip" data-gpu="mi300x">MI300X 192GB</button>
+        <button class="gpu-chip" data-gpu="mi325x">MI325X 256GB</button>
         <button class="gpu-chip" data-gpu="a100">A100 80GB</button>
         <button class="gpu-chip" data-gpu="l40s">L40S 48GB</button>
+        <button class="gpu-chip" data-gpu="a10">A10 24GB</button>
       </div>
     </div>
     <div class="param-grid">
@@ -829,10 +835,16 @@ header p {
   };
 
   var GPU_PRESETS = {
-    'h100': { vram:80, bw:3.35, tdp:700, tflops:989 },
-    'h200': { vram:141, bw:4.8, tdp:700, tflops:989 },
-    'a100': { vram:80, bw:2.0, tdp:400, tflops:312 },
-    'l40s': { vram:48, bw:0.864, tdp:350, tflops:362 }
+    'b300':   { vram:288, bw:8.0,   tdp:1400, tflops:3500 },
+    'b200':   { vram:192, bw:8.0,   tdp:1000, tflops:2250 },
+    'b100':   { vram:192, bw:6.0,   tdp:700,  tflops:1800 },
+    'h200':   { vram:141, bw:4.8,   tdp:700,  tflops:989 },
+    'h100':   { vram:80,  bw:3.35,  tdp:700,  tflops:989 },
+    'mi300x': { vram:192, bw:5.3,   tdp:750,  tflops:1307 },
+    'mi325x': { vram:256, bw:6.0,   tdp:1000, tflops:1307 },
+    'a100':   { vram:80,  bw:2.0,   tdp:400,  tflops:312 },
+    'l40s':   { vram:48,  bw:0.864, tdp:350,  tflops:362 },
+    'a10':    { vram:24,  bw:0.6,   tdp:150,  tflops:125 }
   };
 
   function $(id) { return document.getElementById(id); }
