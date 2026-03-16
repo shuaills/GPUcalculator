@@ -606,6 +606,7 @@ header p {
         <button class="gpu-chip" data-gpu="a100">A100 80GB</button>
         <button class="gpu-chip" data-gpu="l40s">L40S 48GB</button>
         <button class="gpu-chip" data-gpu="a10">A10 24GB</button>
+        <button class="gpu-chip" data-gpu="custom">自定义</button>
       </div>
     </div>
     <div class="param-grid">
@@ -905,18 +906,29 @@ header p {
   });
 
   // GPU 预设
+  function activateCustomGpu() {
+    document.querySelectorAll('.gpu-chip').forEach(function(c) { c.classList.remove('active'); });
+    var custom = document.querySelector('[data-gpu="custom"]');
+    if (custom) custom.classList.add('active');
+  }
+
   $('gpu-chips').addEventListener('click', function(e) {
     var chip = e.target.closest('[data-gpu]');
     if (!chip) return;
+    document.querySelectorAll('.gpu-chip').forEach(function(c) { c.classList.remove('active'); });
+    chip.classList.add('active');
     var g = GPU_PRESETS[chip.dataset.gpu];
-    if (!g) return;
+    if (!g) { recalc(); return; } // 自定义：保留当前值
     $('gpu_vram').value = g.vram;
     $('hbm_bw').value = g.bw;
     $('gpu_tdp').value = g.tdp;
     $('fp16_tflops').value = g.tflops;
-    document.querySelectorAll('.gpu-chip').forEach(function(c) { c.classList.remove('active'); });
-    chip.classList.add('active');
     recalc();
+  });
+
+  // 手动修改GPU参数时自动切换到自定义模式
+  ['gpu_vram','hbm_bw','gpu_tdp','fp16_tflops'].forEach(function(id) {
+    $(id).addEventListener('input', activateCustomGpu);
   });
 
   function makeTd(text, cls) {
